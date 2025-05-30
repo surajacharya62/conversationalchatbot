@@ -37,7 +37,8 @@ def get_file_signature(uploaded_files):
 def main():
     st.title("🤖 Welcome to AI Conversational Chatbot")
     st.markdown("Upload documents and chat with AI that can answer questions and call or book appointments!")
-    
+          
+
     # sidebar panel
     with st.sidebar:
         st.header("⚙️ Configuration")
@@ -72,6 +73,9 @@ def main():
             st.session_state.last_uploaded_files = current_file_signature
             st.session_state.documents_loaded = False
             st.session_state.vectorstore_ready = False
+
+            st.session_state.uploaded_file_names = [f.name for f in uploaded_files]
+            st.session_state.current_file_name = uploaded_files[0].name
             
             with st.spinner("🔄 Processing documents (refreshing database)..."):
                 # initializing chatbot first if not exists
@@ -106,7 +110,7 @@ def main():
                         st.session_state.vectorstore_ready = False
                     
                     # showing which files were processed
-                    for file in uploaded_files:
+                    for file in uploaded_files:                        
                         st.text(f"📁 {file.name} ({file.type}) - {file.size} bytes")
                         
                 except Exception as e:
@@ -212,8 +216,9 @@ def main():
         # getting response from AI model gemini-1.5-flash
         with st.chat_message("🤖"):
             with st.spinner("Thinking..."):
-                try:
-                    response = st.session_state.chatbot.chat(prompt)
+                try:    
+                    global file_name                
+                    response = st.session_state.chatbot.chat(file_name, prompt)
                     st.markdown(response)
                 except Exception as e:
                     error_msg = f"I encountered an error: {str(e)}"
@@ -239,7 +244,9 @@ def main():
                 example_query = "What are the main topics covered in the uploaded documents?"
                 st.session_state.messages.append({"role": "user", "content": example_query})
                 with st.spinner("Processing..."):
-                    response = st.session_state.chatbot.chat(example_query)
+                    
+                    print("-----", st.session_state.current_file_name)
+                    response = st.session_state.chatbot.chat(st.session_state.current_file_name, example_query)
                     st.session_state.messages.append({"role": "assistant", "content": response})
                 st.rerun()
             else:
@@ -250,7 +257,8 @@ def main():
             example_query = "I'd like to book an appointment"
             st.session_state.messages.append({"role": "user", "content": example_query})
             with st.spinner("Processing..."):
-                response = st.session_state.chatbot.chat(example_query)
+                print(st.session_state.current_file_name)
+                response = st.session_state.chatbot.chat(st.session_state.current_file_name, example_query)
                 st.session_state.messages.append({"role": "🤖", "content": response})
             st.rerun()
     

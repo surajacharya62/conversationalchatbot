@@ -4,4 +4,4 @@
 
 # Insturctions
 -- install the required files from requirements.txt <br>
--- run the command: streamlit run app.py
+-- run the command: streamlit run app.py 
