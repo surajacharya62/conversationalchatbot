@@ -10,7 +10,7 @@ load_dotenv()
 
 # page configuration
 st.set_page_config(
-    page_title="AI Document Chatbot",
+    page_title="Welcome to AI Conversational Chatbot",
     page_icon="🤖",
     layout="wide"
 )
