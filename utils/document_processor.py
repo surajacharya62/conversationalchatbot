@@ -6,16 +6,17 @@ from langchain_community.vectorstores import Chroma
 from langchain_google_genai import GoogleGenerativeAIEmbeddings
 from langchain.schema import Document
 
+
 class DocumentProcessor:
     def __init__(self, google_api_key: str):
         self.embeddings = GoogleGenerativeAIEmbeddings(
             model="models/embedding-001",
             google_api_key=google_api_key
         )
-        # FIXED: Reduced chunk size for better performance and compatibility
+        
         self.text_splitter = RecursiveCharacterTextSplitter(
-            chunk_size=500,  # Reduced from 2000 to 500
-            chunk_overlap=50,  # Reduced from 200 to 50
+            chunk_size=500,  
+            chunk_overlap=50,  
             length_function=len,
         )
         self.vectorstore = None
@@ -37,7 +38,7 @@ class DocumentProcessor:
                 elif file_extension == '.docx':
                     loader = Docx2txtLoader(file_path)
                 elif file_extension == '.txt':
-                    loader = TextLoader(file_path, encoding='utf-8')  # Added encoding
+                    loader = TextLoader(file_path, encoding='utf-8')
                 else:
                     print(f"Unsupported file type: {file_extension}")
                     continue
@@ -56,21 +57,20 @@ class DocumentProcessor:
         if not documents:
             raise ValueError("No documents provided")
         
-        # FIXED: Added force_refresh functionality
+       
         if force_refresh:
             import shutil
             import time
             import tempfile
             
-            # Clear the vectorstore object first
+            # clearing the vectorstore object first
             if hasattr(self, 'vectorstore') and self.vectorstore:
                 try:
                     del self.vectorstore
                 except:
                     pass
-            self.vectorstore = None
+            self.vectorstore = None            
             
-            # Remove all possible database directories
             db_paths = ["./chroma_db", "./.chroma", "./chromadb"]
             for db_path in db_paths:
                 if os.path.exists(db_path):
@@ -80,25 +80,22 @@ class DocumentProcessor:
                     except Exception as e:
                         print(f"Warning: Could not remove {db_path}: {e}")
             
-            # Wait a moment for file system to catch up
+            # waiting a moment for file system to catch up
             time.sleep(0.1)
         
-        # Split documents into chunks
+        # splitting documents into chunks
         texts = self.text_splitter.split_documents(documents)
-        print(f"Split documents into {len(texts)} chunks")
+        print(f"Split documents into {len(texts)} chunks")        
         
-        # FIXED: Added content verification
         total_content = sum(len(doc.page_content) for doc in texts)
         print(f"📊 Total content length: {total_content} characters")
         
         if total_content == 0:
-            raise ValueError("No content found in documents")
-        
-        # FIXED: Create vector store with better path handling for cloud deployment
+            raise ValueError("No content found in documents")        
+       
         import time
-        import tempfile
-        
-        # Use system temp directory for better compatibility with cloud deployment
+        import tempfile        
+       
         temp_dir = tempfile.gettempdir()
         db_path = os.path.join(temp_dir, f"chroma_db_{int(time.time())}")
         
@@ -112,7 +109,7 @@ class DocumentProcessor:
         
         print(f"✅ Vector store created successfully with {len(texts)} chunks")
         
-        # FIXED: Verify the vectorstore works
+        
         try:
             test_results = self.vectorstore.similarity_search("test", k=1)
             print(f"🧪 Vectorstore verification: Found {len(test_results)} test results")
@@ -121,48 +118,48 @@ class DocumentProcessor:
         
         return self.vectorstore
 
-    def clear_vectorstore(self):
-        """Delete existing vector store - FIXED: Proper clearing"""
-        import shutil
+    # def clear_vectorstore(self):
+    #     """Delete existing vector store - FIXED: Proper clearing"""
+    #     import shutil
         
-        try:
-            # Clear the vectorstore object first
-            if hasattr(self, 'vectorstore') and self.vectorstore:
-                try:
-                    del self.vectorstore
-                except:
-                    pass
+    #     try:
+    #         # Clear the vectorstore object first
+    #         if hasattr(self, 'vectorstore') and self.vectorstore:
+    #             try:
+    #                 del self.vectorstore
+    #             except:
+    #                 pass
             
-            self.vectorstore = None
+    #         self.vectorstore = None
             
-            # Remove all possible database directories
-            db_paths = ["./chroma_db", "./.chroma", "./chromadb"]
-            for db_path in db_paths:
-                if os.path.exists(db_path):
-                    try:
-                        shutil.rmtree(db_path)
-                        print(f"🗑️ Removed {db_path}")
-                    except Exception as e:
-                        print(f"Warning: Could not remove {db_path}: {e}")
+    #         # Remove all possible database directories
+    #         db_paths = ["./chroma_db", "./.chroma", "./chromadb"]
+    #         for db_path in db_paths:
+    #             if os.path.exists(db_path):
+    #                 try:
+    #                     shutil.rmtree(db_path)
+    #                     print(f"🗑️ Removed {db_path}")
+    #                 except Exception as e:
+    #                     print(f"Warning: Could not remove {db_path}: {e}")
             
-            # Also try to remove temp directories
-            import tempfile
-            import glob
-            temp_dir = tempfile.gettempdir()
-            chroma_temp_dirs = glob.glob(os.path.join(temp_dir, "chroma_db_*"))
-            for temp_db in chroma_temp_dirs:
-                try:
-                    shutil.rmtree(temp_db)
-                    print(f"🗑️ Removed temp DB: {temp_db}")
-                except:
-                    pass
+    #         # Also try to remove temp directories
+    #         import tempfile
+    #         import glob
+    #         temp_dir = tempfile.gettempdir()
+    #         chroma_temp_dirs = glob.glob(os.path.join(temp_dir, "chroma_db_*"))
+    #         for temp_db in chroma_temp_dirs:
+    #             try:
+    #                 shutil.rmtree(temp_db)
+    #                 print(f"🗑️ Removed temp DB: {temp_db}")
+    #             except:
+    #                 pass
             
-            print("✅ Vectorstore cleared completely")
+    #         print("✅ Vectorstore cleared completely")
             
-        except Exception as e:
-            print(f"Error clearing vectorstore: {e}")
+    #     except Exception as e:
+    #         print(f"Error clearing vectorstore: {e}")
         
-        return None
+    #     return None
 
     def load_existing_vectorstore(self) -> Chroma:
         """Load existing vector store"""        
@@ -180,6 +177,7 @@ class DocumentProcessor:
         else:
             raise FileNotFoundError("No existing vector store found")
 
+
     def similarity_search(self, query: str, k: int = 4) -> List[Document]:
         """Search for similar documents - FIXED: Better error handling"""
         if self.vectorstore is None:
@@ -191,9 +189,9 @@ class DocumentProcessor:
             return results
         except Exception as e:
             print(f"Error in similarity search: {e}")
-            return []  # Return empty list instead of crashing
+            return []  
 
-    # OPTIONAL: Add this method if you want to add documents to existing store
+    
     def add_documents(self, file_paths: List[str]):
         """Add new documents to existing vector store"""
         try:
@@ -213,7 +211,7 @@ class DocumentProcessor:
         except Exception as e:
             print(f"Error adding documents: {e}")
 
-    # DEBUGGING: Add this method for troubleshooting
+    
     def get_vectorstore_info(self) -> dict:
         """Get information about the current vectorstore"""
         info = {
@@ -224,8 +222,7 @@ class DocumentProcessor:
         }
         
         if self.vectorstore:
-            try:
-                # Try to get some basic info
+            try:                
                 test_search = self.vectorstore.similarity_search("", k=1)
                 info["has_documents"] = len(test_search) > 0
                 info["sample_content"] = test_search[0].page_content[:100] if test_search else "No content"

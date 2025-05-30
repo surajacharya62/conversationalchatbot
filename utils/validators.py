@@ -150,13 +150,13 @@ class TimeParser:
                     display_hour = 12
                 return True, time_str, f"{display_hour}:{minute:02d} {period}"
         
-        # Pattern for simple hour (9, 14, "nine")
+        # pattern for simple hour (9, 14, "nine")
         simple_hour_pattern = r'\b(\d{1,2})\b'
         match = re.search(simple_hour_pattern, text)
         if match:
             hour = int(match.group(1))
             if 1 <= hour <= 12:
-                # Assume PM for business hours (9-5), AM for early hours
+                # assuming PM for business hours (9-5), AM for early hours
                 if 9 <= hour <= 12:
                     actual_hour = hour + 12 if hour != 12 else 12
                     return True, f"{actual_hour:02d}:00", f"{hour}:00 PM"
@@ -166,8 +166,8 @@ class TimeParser:
                 display_hour = hour - 12
                 return True, f"{hour:02d}:00", f"{display_hour}:00 PM"
         
-        # Handle text-based times
-        text_times = {
+        # handling text-based times 
+        text_times = { 
             "morning": ("09:00", "9:00 AM"),
             "afternoon": ("14:00", "2:00 PM"), 
             "evening": ("18:00", "6:00 PM"),

@@ -98,7 +98,7 @@ class SimpleChatbot:
         self.document_processor = DocumentProcessor(google_api_key)
         self.conversational_form = ConversationalForm()
 
-        # Initialize document store if paths provided
+        # initializing document store if paths provided
         if documents_path:
             self.setup_documents(documents_path, force_refresh=True)
         else:
@@ -112,32 +112,31 @@ class SimpleChatbot:
         """Setup document processing"""
         print(f"🔧 Processing {len(file_paths)} files...")
         
-        # Always clear first to prevent old content
+        # clearing first to prevent old content
         if force_refresh:
             print("🗑️ Clearing old documents first...")
             self.clear_documents()
         
         try:
-            # Load documents
+           
             documents = self.document_processor.load_documents(file_paths)
             if not documents:
                 raise ValueError("No documents could be loaded")
             
             print(f"📚 Loaded {len(documents)} document(s)")
             
-            # Show what we're actually loading (first 200 chars of first document)
+            # showing what we're actually loading (first 100 chars of first document)
             if documents:
-                preview = documents[0].page_content[:200]
+                preview = documents[0].page_content[:100]
                 print(f"📄 Document preview: {preview}...")
             
-            # Create vector store
+            # creating vector store
             self.document_processor.create_vectorstore(documents, force_refresh=True)
             
-            # Verify it works with actual content
+            # verifying it works with actual content
             if self.document_processor.vectorstore:
-                print("✅ Document processing completed successfully")
+                print("✅ Document processing completed successfully")                
                 
-                # Test search to verify content
                 test_results = self.document_processor.similarity_search("", k=1)
                 if test_results:
                     test_preview = test_results[0].page_content[:100]
@@ -150,13 +149,12 @@ class SimpleChatbot:
         except Exception as e:
             print(f"❌ Document setup failed: {e}")
             raise e
-
-    # FIXED: Renamed method to match app.py expectations
+    
     def clear_documents(self):
         """Clear all documents from vector store"""
         import shutil
         try:
-            # Close/delete the current vectorstore first
+            # deleting the current vectorstore
             if hasattr(self.document_processor, 'vectorstore') and self.document_processor.vectorstore:
                 try:
                     del self.document_processor.vectorstore
@@ -165,7 +163,7 @@ class SimpleChatbot:
             
             self.document_processor.vectorstore = None
             
-            # Remove the database directory completely
+            # removing the database directory completely
             db_paths = ["./chroma_db", "./.chroma", "./chromadb"]
             for db_path in db_paths:
                 if os.path.exists(db_path):
@@ -179,10 +177,10 @@ class SimpleChatbot:
         except Exception as e:
             print(f"Error clearing documents: {e}")
 
-    # LEGACY: Keep old method name for backward compatibility
-    def clear_vectorstoredb(self):
-        """Legacy method - use clear_documents() instead"""
-        self.clear_documents()
+    
+    # def clear_vectorstoredb(self):
+    #     """Legacy method - use clear_documents() instead"""
+    #     self.clear_documents()
 
     def chat(self, user_input: str) -> str:
         """
@@ -190,29 +188,26 @@ class SimpleChatbot:
         return: processed string  
         """
         
-        user_lower = user_input.lower().strip()
-        
-        print(f"🎯 User input: {user_input}")
-        print(f"🔍 Vector store exists: {self.document_processor.vectorstore is not None}")
-        
-        # Handle booking flow first (highest priority when active)
+        user_lower = user_input.lower().strip()        
+      
+        # handling booking flow first (highest priority when active)
         if self.conversational_form.current_step == "collecting":
             return self._handle_booking_flow(user_input)
         
-        # Handling call or booking requests
+        # handling call or booking requests
         booking_keywords = ['book', 'appointment', 'call me', 'contact me', 'schedule', 'meeting']
         if any(keyword in user_lower for keyword in booking_keywords):
             self.conversational_form.current_step = "collecting"
             return "I'd be happy to help you book an appointment! 📅\n\nLet's start with your full name:"
         
-        # Handling chat reset requests
+        # handling chat reset requests
         if any(word in user_lower for word in ["reset", "start over", "clear", "restart"]):
             self.conversational_form.reset()
             return ("🔄 I've reset everything. How can I help you today?\n\n"
                    "• Ask questions about uploaded documents\n"
                    "• Say 'I want to book an appointment' to schedule a meeting")
         
-        # Handle document questions - ALWAYS try document search first if vectorstore exists
+        
         if self.document_processor.vectorstore:
             print("📄 Attempting document search...")
             try:
@@ -221,7 +216,7 @@ class SimpleChatbot:
                 print(f"❌ Document search failed: {e}")
                 return f"📄 Document search failed: {str(e)}. The documents may not be properly loaded."
         
-        # FIXED: Better message when no documents are loaded
+        # messaging when no documents are loaded
         print("⚠️ No vectorstore available")
         return ("📄 No documents are currently uploaded. Please upload documents using the sidebar to get started!\n\n"
                "I can also help you:\n"
@@ -243,11 +238,11 @@ class SimpleChatbot:
             self.conversational_form.current_step = "complete"
             return f"✅ No problem! Here's your booking information:\n\n{summary}\n\n📞 We'll contact you soon to confirm your appointment!"
         
-        # Validate and set the current field
+        # validating and setting the current field
         success, message = self.conversational_form.validate_and_set_field(next_field, user_input)
         
         if success:
-            # Successfully set field, check what's next
+            # successfully setting field and check what's next field
             next_missing = self.conversational_form.get_next_missing_field()
             
             if next_missing:
@@ -267,11 +262,9 @@ class SimpleChatbot:
         """Search through documents"""
         try:
             if not self.document_processor.vectorstore:
-                return "📄 No documents are currently loaded. Please upload documents first."
-            
-            print(f"🔍 Searching for: '{query}'")
-            
-            # Try different search strategies
+                return "📄 No documents are currently loaded. Please upload documents first."           
+                    
+           
             results = []
             
             # Strategy 1: Direct similarity search
@@ -306,13 +299,11 @@ class SimpleChatbot:
             if results and len(results) > 0:
                 response = "📄 **Here's what I found in your documents:**\n\n"
                 
-                for i, doc in enumerate(results[:3]):  # Limit to 3 results
-                    # Get content
+                for i, doc in enumerate(results[:3]):                    
                     content = doc.page_content.strip()
                     if len(content) > 300:
-                        content = content[:300] + "..."
-                    
-                    # Get source if available
+                        content = content[:300] + "..."                    
+                   
                     source = doc.metadata.get('source', 'Document')
                     filename = os.path.basename(source) if source != 'Document' else f'Section {i+1}'
                     
