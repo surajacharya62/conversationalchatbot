@@ -61,7 +61,8 @@ def main():
         api_key = st.text_input(
             "Google API Key",
             type="password",
-            value=os.getenv("GOOGLE_API_KEY", ""),
+            # value=os.getenv("GOOGLE_API_KEY", ""),
+            value="AIzaSyBh6_bbvUCDTOdQPlW-lRfdQUXblVXPOeI",
             help="Get your API key from Google"
         )
         
