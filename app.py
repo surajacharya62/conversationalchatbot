@@ -216,15 +216,14 @@ def main():
         # getting response from AI model gemini-1.5-flash
         with st.chat_message("🤖"):
             with st.spinner("Thinking..."):
-                try:    
-                    global file_name                
-                    response = st.session_state.chatbot.chat(file_name, prompt)
+                try:                                     
+                    response = st.session_state.chatbot.chat(st.session_state.current_file_name, prompt)
                     st.markdown(response)
                 except Exception as e:
                     error_msg = f"I encountered an error: {str(e)}"
-                    st.error(error_msg)
-                    response = "I'm sorry, I encountered an error. Please try rephrasing your question or check if documents are properly uploaded."
-                    st.markdown(response)
+                    # st.error(error_msg)
+                    # response = "I'm sorry, I encountered an error. Please try rephrasing your question or check if documents are properly uploaded."
+                    # st.markdown(response)
         
         # adding assistant response to chat history
         st.session_state.messages.append({"role": "🤖", "content": response})
