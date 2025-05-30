@@ -1,35 +1,33 @@
 ## Project Structure
-ConversationalChatBotUsingLangchain/
-├── app.py                          # Main Streamlit application
-├── requirements.txt                # Python dependencies
-├── .env                           # Environment variables (API keys)
-├── .gitignore                     # Git ignore file
-├── README.md                      # Project documentation
+ConversationalChatBotUsingLangchain/ <br>
+├── app.py                         <br>
+├── requirements.txt                <br>
+├── .env                          <br>
+├── .gitignore                     <br>
+├── README.md                      <br>
 │
-├── utils/                         # Utility modules
-│   ├── __init__.py               # Makes utils a Python package
-│   ├── validators.py             # Input validation (email, phone, date/time)
-│   └── document_processor.py     # Document loading and vector processing
+├── utils/                         <br>
+│   ├── __init__.py               <br>
+│   ├── validators.py             <br>
+│   └── document_processor.py     <br>
 │
-├── agents/                       # AI agent modules
-│   ├── __init__.py              # Makes agents a Python package
-│   └── simple_chatbot.py        # Main chatbot logic and conversation handling
+├── agents/                       <br>
+│   ├── __init__.py              <br>
+│   └── simple_chatbot.py        <br>
 │
-└── sample_documents/             # Sample files for testing
-    ├── company_info.txt          # Sample company information
-    └── product_manual.pdf        # Sample product documentation
+
 
 
 
 ## Architecture
 ┌─────────────────────────────────────────────────────────────┐
-│                    Streamlit Web Interface                  │
+│                    Streamlit Web Interface  <br>                │
 │                         (app.py)                           │
 └─────────────────────┬───────────────────────────────────────┘
-                      │
+                      │<br>
 ┌─────────────────────▼───────────────────────────────────────┐
-│                   SimpleChatbot                            │
-│                (agents/simple_chatbot.py)                  │
+│                   SimpleChatbot    <br>                        │
+│                (agents/simple_chatbot.py)  <br>                │
 │  ┌─────────────────┬─────────────────┬──────────────────┐  │
 │  │ Document Q&A    │ Booking Form    │ General Chat     │  │
 │  │                 │                 │                  │  │
