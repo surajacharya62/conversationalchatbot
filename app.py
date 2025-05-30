@@ -255,9 +255,10 @@ def main():
         if st.button("📞 Call or Book appointment"):
             example_query = "I'd like to book an appointment"
             st.session_state.messages.append({"role": "user", "content": example_query})
-            with st.spinner("Processing..."):
-                print(st.session_state.current_file_name)
-                response = st.session_state.chatbot.chat(st.session_state.current_file_name, example_query)
+            with st.spinner("Processing..."):      
+                if st.session_state.current_file_name  is None:
+                    file_name = None        
+                response = st.session_state.chatbot.chat(file_name, example_query)
                 st.session_state.messages.append({"role": "🤖", "content": response})
             st.rerun()
     
