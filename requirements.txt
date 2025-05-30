@@ -1,0 +1,13 @@
+langchain
+langchain-google-genai
+langchain-community
+chromadb
+streamlit
+pypdf2
+python-docx
+python-multipart
+python-dateutil
+phonenumbers
+email-validator
+pydantic
+python-dotenv
