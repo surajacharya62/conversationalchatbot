@@ -26,6 +26,8 @@ if "documents_loaded" not in st.session_state:
     st.session_state.documents_loaded = False
 if "vectorstore_ready" not in st.session_state:
     st.session_state.vectorstore_ready = False
+if "current_file_name" not in st.session_state:
+    st.session_state.current_file_name = None
 
 
 def get_file_signature(uploaded_files):
