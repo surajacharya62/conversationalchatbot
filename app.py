@@ -35,8 +35,8 @@ def get_file_signature(uploaded_files):
     return [(f.name, f.size) for f in uploaded_files]
 
 def main():
-    st.title("🤖 AI Document Chatbot")
-    st.markdown("Upload documents and chat with AI that can answer questions and book appointments!")
+    st.title("🤖 Welcome to AI Conversational Chatbot")
+    st.markdown("Upload documents and chat with AI that can answer questions and call or book appointments!")
     
     # sidebar panel
     with st.sidebar:
