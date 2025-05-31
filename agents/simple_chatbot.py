@@ -1,13 +1,15 @@
 from typing import Dict, List, Any, Optional
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain.schema import Document
+from langchain.text_splitter import RecursiveCharacterTextSplitter
+from langchain_community.vectorstores import Chroma
+from langchain_google_genai import GoogleGenerativeAIEmbeddings
 import json
 import os
+import shutil
 from datetime import datetime
 from utils.validators import InputValidator, DateParser, TimeParser
-from utils.document_processor import DocumentProcessor
 
-##------------------ Creating the conversational form to call and book the appointment
 class ConversationalForm:
     def __init__(self):
         self.reset()
@@ -82,280 +84,296 @@ class ConversationalForm:
                 self.data["purpose"] = value.strip()
                 return True, f"✅ Purpose noted: {value.strip()}"
             else:
-                # Purpose is optional
                 return True, "✅ No specific purpose noted (optional field skipped)"
         
         return False, "❌ Unknown field"
 
 class SimpleChatbot:
-    def __init__(self, google_api_key: str, documents_path: List[str] = None):
+    def __init__(self, google_api_key: str):
         self.llm = ChatGoogleGenerativeAI(
             model="gemini-1.5-flash",
             google_api_key=google_api_key,
             temperature=0.1
         )
         
-        self.document_processor = DocumentProcessor(google_api_key)
+        # Simple document processing
+        self.embeddings = GoogleGenerativeAIEmbeddings(
+            model="models/embedding-001",
+            google_api_key=google_api_key
+        )
+        
+        self.text_splitter = RecursiveCharacterTextSplitter(
+            chunk_size=500,  
+            chunk_overlap=50,  
+            length_function=len,
+        )
+        
+        self.vectorstore = None
         self.conversational_form = ConversationalForm()
 
-        # initializing document store if paths provided
-        if documents_path:
-            self.setup_documents(documents_path, force_refresh=True)
-        else:
-            try:
-                self.document_processor.load_existing_vectorstore()
-                print("Loaded existing document store")
-            except FileNotFoundError:
-                print("No existing document store found")
-    
-    def setup_documents(self, file_paths: List[str], force_refresh: bool = True):
-        """Setup document processing"""
-        print(f"🔧 Processing {len(file_paths)} files...")
-        
-        # clearing first to prevent old content
-        if force_refresh:
-            print("🗑️ Clearing old documents first...")
-            self.clear_documents()
-        
+    def setup_documents_direct(self, uploaded_files):
+        """Setup documents directly from Streamlit uploaded files - NO TEMP FILES"""
         try:
-           
-            documents = self.document_processor.load_documents(file_paths)
+            print(f"🔧 Processing {len(uploaded_files)} files directly...")
+            
+            # Clear old documents first
+            self.clear_documents()
+            
+            documents = []
+            
+            for uploaded_file in uploaded_files:
+                try:
+                    print(f"📄 Processing: {uploaded_file.name}")
+                    
+                    # Get file content as text
+                    content = ""
+                    file_extension = os.path.splitext(uploaded_file.name)[1].lower()
+                    
+                    if file_extension == '.txt':
+                        # Text files - decode bytes to string
+                        content = uploaded_file.getvalue().decode('utf-8')
+                        
+                    elif file_extension == '.pdf':
+                        # For PDFs, simple text extraction
+                        try:
+                            import PyPDF2
+                            import io
+                            
+                            pdf_reader = PyPDF2.PdfReader(io.BytesIO(uploaded_file.getvalue()))
+                            text_parts = []
+                            
+                            for page in pdf_reader.pages:
+                                page_text = page.extract_text()
+                                if page_text and page_text.strip():
+                                    text_parts.append(page_text.strip())
+                            
+                            content = "\n\n".join(text_parts)
+                            
+                        except Exception as pdf_error:
+                            print(f"PDF extraction failed: {pdf_error}")
+                            content = f"Error extracting text from {uploaded_file.name}"
+                    
+                    elif file_extension == '.docx':
+                        # For DOCX, simple text extraction
+                        try:
+                            import docx
+                            import io
+                            
+                            doc = docx.Document(io.BytesIO(uploaded_file.getvalue()))
+                            text_parts = []
+                            
+                            for paragraph in doc.paragraphs:
+                                if paragraph.text and paragraph.text.strip():
+                                    text_parts.append(paragraph.text.strip())
+                            
+                            content = "\n\n".join(text_parts)
+                            
+                        except Exception as docx_error:
+                            print(f"DOCX extraction failed: {docx_error}")
+                            content = f"Error extracting text from {uploaded_file.name}"
+                    
+                    else:
+                        print(f"Unsupported file type: {file_extension}")
+                        continue
+                    
+                    # Create document if we have content
+                    if content and content.strip() and len(content.strip()) > 10:
+                        doc = Document(
+                            page_content=content.strip(),
+                            metadata={"source": uploaded_file.name}
+                        )
+                        documents.append(doc)
+                        print(f"✅ Extracted {len(content)} characters from {uploaded_file.name}")
+                    else:
+                        print(f"⚠️ No usable content found in {uploaded_file.name}")
+                        
+                except Exception as e:
+                    print(f"❌ Error processing {uploaded_file.name}: {e}")
+                    continue
+            
             if not documents:
-                raise ValueError("No documents could be loaded")
+                print("❌ No documents could be processed")
+                return False
             
-            print(f"📚 Loaded {len(documents)} document(s)")
+            # Create vector store
+            print(f"📚 Creating vector store from {len(documents)} documents...")
             
-            # showing what we're actually loading (first 100 chars of first document)
-            if documents:
-                preview = documents[0].page_content[:100]
-                print(f"📄 Document preview: {preview}...")
+            # Split documents into chunks
+            texts = self.text_splitter.split_documents(documents)
+            print(f"Split into {len(texts)} chunks")
             
-            # creating vector store
-            self.document_processor.create_vectorstore(documents, force_refresh=True)
+            if not texts:
+                print("❌ No text chunks created")
+                return False
             
-            # verifying it works with actual content
-            if self.document_processor.vectorstore:
-                print("✅ Document processing completed successfully")                
-                
-                test_results = self.document_processor.similarity_search("", k=1)
-                if test_results:
-                    test_preview = test_results[0].page_content[:100]
-                    print(f"🧪 Test search preview: {test_preview}...")
-                else:
-                    print("⚠️ Test search returned no results")
-            else:
-                raise ValueError("Vector store creation failed")
-                
+            # Create vectorstore
+            self.vectorstore = Chroma.from_documents(
+                documents=texts,
+                embedding=self.embeddings,
+                persist_directory="./chroma_db"
+            )
+            
+            print(f"✅ Vector store created with {len(texts)} chunks")
+            return True
+            
         except Exception as e:
             print(f"❌ Document setup failed: {e}")
-            raise e
-    
+            return False
+
     def clear_documents(self):
         """Clear all documents from vector store"""
-        import shutil
         try:
-            # deleting the current vectorstore
-            if hasattr(self.document_processor, 'vectorstore') and self.document_processor.vectorstore:
+            # Clear vectorstore object
+            if hasattr(self, 'vectorstore') and self.vectorstore:
                 try:
-                    del self.document_processor.vectorstore
+                    del self.vectorstore
                 except:
                     pass
             
-            self.document_processor.vectorstore = None
+            self.vectorstore = None
             
-            # removing the database directory completely
-            db_paths = ["./chroma_db", "./.chroma", "./chromadb"]
-            for db_path in db_paths:
-                if os.path.exists(db_path):
-                    try:
-                        shutil.rmtree(db_path)
-                        print(f"🗑️ Removed {db_path}")
-                    except:
-                        pass
+            # Remove database directory
+            if os.path.exists("./chroma_db"):
+                try:
+                    shutil.rmtree("./chroma_db")
+                    print("🗑️ Removed old vectorstore")
+                except:
+                    pass
             
-            print("✅ All document data cleared")
+            print("✅ Documents cleared")
         except Exception as e:
             print(f"Error clearing documents: {e}")
 
-    
-    # def clear_vectorstoredb(self):
-    #     """Legacy method - use clear_documents() instead"""
-    #     self.clear_documents()
-
     def chat(self, user_input: str) -> str:
-        """
-        user_input: take user chat input from text_input box
-        return: processed string  
-        """
-        
+        """Main chat function"""
         user_lower = user_input.lower().strip()        
       
-        # handling booking flow first (highest priority when active)
+        # Handle booking flow first
         if self.conversational_form.current_step == "collecting":
             return self._handle_booking_flow(user_input)
         
-        # handling call or booking requests
+        # Handle booking requests
         booking_keywords = ['book', 'appointment', 'call me', 'contact me', 'schedule', 'meeting']
         if any(keyword in user_lower for keyword in booking_keywords):
             self.conversational_form.current_step = "collecting"
             return "I'd be happy to help you book an appointment! 📅\n\nLet's start with your full name:"
         
-        # handling chat reset requests
+        # Handle reset requests
         if any(word in user_lower for word in ["reset", "start over", "clear", "restart"]):
             self.conversational_form.reset()
             return ("🔄 I've reset everything. How can I help you today?\n\n"
                    "• Ask questions about uploaded documents\n"
                    "• Say 'I want to book an appointment' to schedule a meeting")
         
-        
-        if self.document_processor.vectorstore:
-            print("📄 Attempting document search...")
+        # Search documents if available
+        if self.vectorstore:
+            print("📄 Searching documents...")
             try:
                 return self._search_documents(user_input)
             except Exception as e:
                 print(f"❌ Document search failed: {e}")
-                return f"📄 Document search failed: {str(e)}. The documents may not be properly loaded."
+                return f"📄 Document search failed: {str(e)}"
         
-        # messaging when no documents are loaded
-        print("⚠️ No vectorstore available")
-        return ("📄 No documents are currently uploaded. Please upload documents using the sidebar to get started!\n\n"
+        # No documents loaded
+        return ("📄 No documents are currently uploaded. Please upload documents to get started!\n\n"
                "I can also help you:\n"
-               "• Book appointments (say 'I want to book an appointment')\n"
-               "• Have general conversations")
+               "• Book appointments (say 'I want to book an appointment')")
 
     def _handle_booking_flow(self, user_input: str) -> str:
-        """Handling the booking conversation flow"""
+        """Handle booking conversation flow"""
         next_field = self.conversational_form.get_next_missing_field()
                
         if next_field is None:
             summary = self._format_booking_summary()
             self.conversational_form.current_step = "complete"
-            return f"🎉 Perfect! Here's your booking information:\n\n{summary}\n\n📞 We'll contact you soon to confirm your appointment!"
+            return f"🎉 Perfect! Here's your booking information:\n\n{summary}\n\n📞 We'll contact you soon!"
         
         if next_field == "purpose" and any(word in user_input.lower() for word in ["skip", "no", "none", "nothing"]):
             self.conversational_form.data["purpose"] = "Not specified"
             summary = self._format_booking_summary()
             self.conversational_form.current_step = "complete"
-            return f"✅ No problem! Here's your booking information:\n\n{summary}\n\n📞 We'll contact you soon to confirm your appointment!"
+            return f"✅ No problem! Here's your booking information:\n\n{summary}\n\n📞 We'll contact you soon!"
         
-        # validating and setting the current field
+        # Validate and set the current field
         success, message = self.conversational_form.validate_and_set_field(next_field, user_input)
         
         if success:
-            # successfully setting field and check what's next field
             next_missing = self.conversational_form.get_next_missing_field()
             
             if next_missing:
                 prompt = self._get_field_prompt(next_missing)
                 return f"{message}\n\n{prompt}"
             else:
-                # when all fields complete
                 summary = self._format_booking_summary()
                 self.conversational_form.current_step = "complete"
-                return f"{message}\n\n🎉 Perfect! Here's your booking information:\n\n{summary}\n\n📞 We'll contact you soon to confirm your appointment!"
+                return f"{message}\n\n🎉 Perfect! Here's your booking:\n\n{summary}\n\n📞 We'll contact you soon!"
         else:
-            # if validation check is failed, asking again for the same field
             prompt = self._get_field_prompt(next_field)
             return f"{message}\n\n{prompt}"
 
     def _search_documents(self, query: str) -> str:
         """Search through documents"""
         try:
-            if not self.document_processor.vectorstore:
-                return "📄 No documents are currently loaded. Please upload documents first."           
-                    
-           
-            results = []
+            if not self.vectorstore:
+                return "📄 No documents loaded."
             
-            # Strategy 1: Direct similarity search
-            try:
-                results = self.document_processor.similarity_search(query, k=5)
-                print(f"📊 Direct search found {len(results)} results")
-            except Exception as e:
-                print(f"Direct search failed: {e}")
+            # Try direct search
+            results = self.vectorstore.similarity_search(query, k=3)
             
-            # Strategy 2: If no results, try broader search
+            # If no results, try broader search
             if not results:
-                try:
-                    # Search for individual keywords
-                    keywords = query.lower().split()
-                    for keyword in keywords[:3]:  # Try first 3 keywords
-                        if len(keyword) > 3:  # Skip short words
-                            results = self.document_processor.similarity_search(keyword, k=3)
-                            if results:
-                                print(f"📊 Keyword '{keyword}' found {len(results)} results")
-                                break
-                except Exception as e:
-                    print(f"Keyword search failed: {e}")
+                keywords = query.lower().split()
+                for keyword in keywords[:3]:
+                    if len(keyword) > 3:
+                        results = self.vectorstore.similarity_search(keyword, k=3)
+                        if results:
+                            break
             
-            # Strategy 3: If still no results, get any content
+            # If still no results, get any content
             if not results:
-                try:
-                    results = self.document_processor.similarity_search("", k=3)
-                    print(f"📊 Fallback search found {len(results)} results")
-                except Exception as e:
-                    print(f"Fallback search failed: {e}")
+                results = self.vectorstore.similarity_search("", k=3)
             
-            if results and len(results) > 0:
-                response = "📄 **Here's what I found in your documents:**\n\n"
+            if results:
+                response = "📄 **Here's what I found:**\n\n"
                 
-                for i, doc in enumerate(results[:3]):                    
+                for i, doc in enumerate(results[:2]):
                     content = doc.page_content.strip()
                     if len(content) > 300:
-                        content = content[:300] + "..."                    
-                   
-                    source = doc.metadata.get('source', 'Document')
-                    filename = os.path.basename(source) if source != 'Document' else f'Section {i+1}'
+                        content = content[:300] + "..."
                     
-                    response += f"**\n{content}\n\n"
+                    response += f"{content}\n\n"
                 
-                response += "❓ Would you like me to search for something more specific?"
+                response += "❓ Would you like me to search for something specific?"
                 return response
             else:
-                return ("📄 I processed your documents but couldn't find relevant content for your query. "
-                       "This might be because:\n"
-                       "• The document content doesn't match your question\n"
-                       "• Try asking about specific topics mentioned in your documents\n"
-                       "• Or ask 'What is in the document?' to see the general content")
+                return "📄 I couldn't find relevant content. Try asking about specific topics in your document."
                 
         except Exception as e:
             print(f"❌ Error in document search: {e}")
-            return f"📄 Search error: {str(e)}. Please try re-uploading your documents."
-
-    def _general_response(self, user_input: str) -> str:
-        """Generate general response"""
-        return f"""👋 Hello! I'm here to help you. I can:
-
-            📄 **Answer questions** about uploaded documents
-            📅 **Book appointments** (just say 'I want to book an appointment')
-            💬 **Have conversations** about various topics
-
-            You asked: "{user_input}"
-
-            What would you like to know more about?"""
+            return f"📄 Search error: {str(e)}"
 
     def _get_field_prompt(self, field: str) -> str:
-        """Get appropriate prompt for each field"""
+        """Get prompt for each field"""
         prompts = {
             "name": "What's your full name? 👤",
             "email": "What's your email address? 📧",
-            "phone": "What's your phone number? 📱 (Start with +977)",
-            "appointment_date": "When would you like to schedule your appointment? 📅\n(e.g., 'next Monday', 'tomorrow', '2024-03-15')",
-            "appointment_time": "What time would you prefer for your appointment? 🕐\n(e.g., '2:30 PM', '14:30', '9am', 'morning')",
-            "purpose": "What's the purpose of your appointment? 🎯\n(optional - you can say 'skip' if you prefer not to specify)"
+            "phone": "What's your phone number? 📱",
+            "appointment_date": "When would you like your appointment? 📅\n(e.g., 'tomorrow', 'next Monday', '2024-03-15')",
+            "appointment_time": "What time works for you? 🕐\n(e.g., '2:30 PM', '9am', 'morning')",
+            "purpose": "What's the purpose of your appointment? 🎯\n(optional - say 'skip' if you prefer not to specify)"
         }
-        return prompts.get(field, "Please provide the requested information:")
+        return prompts.get(field, "Please provide the information:")
 
     def _format_booking_summary(self) -> str:
         """Format booking summary"""
         data = self.conversational_form.data
-        summary = f"""📋 **Appointment Request Summary**
+        summary = f"""📋 **Appointment Summary**
                 
-        👤 **Name:** {data['name']}
-        📧 **Email:** {data['email']}
-        📞 **Phone:** {data['phone']}
-        📅 **Date:** {data['appointment_date']}
-        🕐 **Time:** {data['appointment_time']}"""
+👤 **Name:** {data['name']}
+📧 **Email:** {data['email']}
+📞 **Phone:** {data['phone']}
+📅 **Date:** {data['appointment_date']}
+🕐 **Time:** {data['appointment_time']}"""
         
         if data['purpose'] and data['purpose'] != "Not specified":
             summary += f"\n🎯 **Purpose:** {data['purpose']}"
@@ -363,7 +381,7 @@ class SimpleChatbot:
         return summary
     
     def get_booking_status(self) -> Dict[str, Any]:
-        """Get current booking form status"""
+        """Get booking status"""
         return {
             "is_complete": self.conversational_form.is_complete(),
             "current_step": self.conversational_form.current_step,
