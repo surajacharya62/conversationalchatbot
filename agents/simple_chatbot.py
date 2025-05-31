@@ -182,7 +182,7 @@ class SimpleChatbot:
     #     """Legacy method - use clear_documents() instead"""
     #     self.clear_documents()
 
-    def chat(self, file_name, user_input: str) -> str:
+    def chat(self, user_input: str) -> str:
         """
         user_input: take user chat input from text_input box
         return: processed string  
@@ -211,7 +211,7 @@ class SimpleChatbot:
         if self.document_processor.vectorstore:
             print("📄 Attempting document search...")
             try:
-                return self._search_documents(file_name, user_input)
+                return self._search_documents(user_input)
             except Exception as e:
                 print(f"❌ Document search failed: {e}")
                 return f"📄 Document search failed: {str(e)}. The documents may not be properly loaded."
@@ -258,7 +258,7 @@ class SimpleChatbot:
             prompt = self._get_field_prompt(next_field)
             return f"{message}\n\n{prompt}"
 
-    def _search_documents(self, file_name, query: str) -> str:
+    def _search_documents(self, query: str) -> str:
         """Search through documents"""
         try:
             if not self.document_processor.vectorstore:
@@ -307,7 +307,7 @@ class SimpleChatbot:
                     source = doc.metadata.get('source', 'Document')
                     filename = os.path.basename(source) if source != 'Document' else f'Section {i+1}'
                     
-                    response += f"**📁 {file_name}:**\n{content}\n\n"
+                    response += f"**\n{content}\n\n"
                 
                 response += "❓ Would you like me to search for something more specific?"
                 return response

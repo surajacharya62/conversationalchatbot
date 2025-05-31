@@ -219,13 +219,13 @@ def main():
         with st.chat_message("🤖"):
             with st.spinner("Thinking..."):
                 try:                                     
-                    response = st.session_state.chatbot.chat(st.session_state.current_file_name, prompt)
+                    response = st.session_state.chatbot.chat(prompt)
                     st.markdown(response)
                 except Exception as e:
                     error_msg = f"I encountered an error: {str(e)}"
-                    # st.error(error_msg)
-                    # response = "I'm sorry, I encountered an error. Please try rephrasing your question or check if documents are properly uploaded."
-                    # st.markdown(response)
+                    st.error(error_msg)
+                    response = "I'm sorry, I encountered an error. Please try rephrasing your question or check if documents are properly uploaded."
+                    st.markdown(response)
         
         # adding assistant response to chat history
         st.session_state.messages.append({"role": "🤖", "content": response})
@@ -247,7 +247,7 @@ def main():
                 with st.spinner("Processing..."):
                     
                     print("-----", st.session_state.current_file_name)
-                    response = st.session_state.chatbot.chat(st.session_state.current_file_name, example_query)
+                    response = st.session_state.chatbot.chat(example_query)
                     st.session_state.messages.append({"role": "assistant", "content": response})
                 st.rerun()
             else:
@@ -258,10 +258,10 @@ def main():
             example_query = "I'd like to book an appointment"
             st.session_state.messages.append({"role": "user", "content": example_query})
             with st.spinner("Processing..."):      
-                if st.session_state.current_file_name  is None:
-                    file_name = ''        
-                    response = st.session_state.chatbot.chat(file_name, example_query)
-                    st.session_state.messages.append({"role": "🤖", "content": response})
+                # if st.session_state.current_file_name  is None:
+                #     file_name = ''        
+                response = st.session_state.chatbot.chat(example_query)
+                st.session_state.messages.append({"role": "🤖", "content": response})
             st.rerun()
     
     with col3:
