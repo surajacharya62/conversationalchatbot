@@ -1,15 +1,12 @@
 from typing import Dict, List, Any, Optional
 from langchain_google_genai import ChatGoogleGenerativeAI
-from langchain.schema import Document
-from langchain.text_splitter import RecursiveCharacterTextSplitter
-from langchain_community.vectorstores import Chroma
-from langchain_google_genai import GoogleGenerativeAIEmbeddings
 import json
 import os
-import shutil
 from datetime import datetime
 from utils.validators import InputValidator, DateParser, TimeParser
+from utils.document_processor import DocumentProcessor
 
+#------- Conversational form
 class ConversationalForm:
     def __init__(self):
         self.reset()
@@ -88,161 +85,26 @@ class ConversationalForm:
         
         return False, "❌ Unknown field"
 
+
+#----- Chatbot agent
 class SimpleChatbot:
     def __init__(self, google_api_key: str):
         self.llm = ChatGoogleGenerativeAI(
             model="gemini-1.5-flash",
             google_api_key=google_api_key,
             temperature=0.1
-        )
-        
-        # Simple document processing
-        self.embeddings = GoogleGenerativeAIEmbeddings(
-            model="models/embedding-001",
-            google_api_key=google_api_key
-        )
-        
-        self.text_splitter = RecursiveCharacterTextSplitter(
-            chunk_size=500,  
-            chunk_overlap=50,  
-            length_function=len,
-        )
-        
-        self.vectorstore = None
+        )        
+       
+        self.document_processor = DocumentProcessor(google_api_key)
         self.conversational_form = ConversationalForm()
 
-    def setup_documents_direct(self, uploaded_files):
-        """Setup documents directly from Streamlit uploaded files - NO TEMP FILES"""
-        try:
-            print(f"🔧 Processing {len(uploaded_files)} files directly...")
-            
-            # Clear old documents first
-            self.clear_documents()
-            
-            documents = []
-            
-            for uploaded_file in uploaded_files:
-                try:
-                    print(f"📄 Processing: {uploaded_file.name}")
-                    
-                    # Get file content as text
-                    content = ""
-                    file_extension = os.path.splitext(uploaded_file.name)[1].lower()
-                    
-                    if file_extension == '.txt':
-                        # Text files - decode bytes to string
-                        content = uploaded_file.getvalue().decode('utf-8')
-                        
-                    elif file_extension == '.pdf':
-                        # For PDFs, simple text extraction
-                        try:
-                            import PyPDF2
-                            import io
-                            
-                            pdf_reader = PyPDF2.PdfReader(io.BytesIO(uploaded_file.getvalue()))
-                            text_parts = []
-                            
-                            for page in pdf_reader.pages:
-                                page_text = page.extract_text()
-                                if page_text and page_text.strip():
-                                    text_parts.append(page_text.strip())
-                            
-                            content = "\n\n".join(text_parts)
-                            
-                        except Exception as pdf_error:
-                            print(f"PDF extraction failed: {pdf_error}")
-                            content = f"Error extracting text from {uploaded_file.name}"
-                    
-                    elif file_extension == '.docx':
-                        # For DOCX, simple text extraction
-                        try:
-                            import docx
-                            import io
-                            
-                            doc = docx.Document(io.BytesIO(uploaded_file.getvalue()))
-                            text_parts = []
-                            
-                            for paragraph in doc.paragraphs:
-                                if paragraph.text and paragraph.text.strip():
-                                    text_parts.append(paragraph.text.strip())
-                            
-                            content = "\n\n".join(text_parts)
-                            
-                        except Exception as docx_error:
-                            print(f"DOCX extraction failed: {docx_error}")
-                            content = f"Error extracting text from {uploaded_file.name}"
-                    
-                    else:
-                        print(f"Unsupported file type: {file_extension}")
-                        continue
-                    
-                    # Create document if we have content
-                    if content and content.strip() and len(content.strip()) > 10:
-                        doc = Document(
-                            page_content=content.strip(),
-                            metadata={"source": uploaded_file.name}
-                        )
-                        documents.append(doc)
-                        print(f"✅ Extracted {len(content)} characters from {uploaded_file.name}")
-                    else:
-                        print(f"⚠️ No usable content found in {uploaded_file.name}")
-                        
-                except Exception as e:
-                    print(f"❌ Error processing {uploaded_file.name}: {e}")
-                    continue
-            
-            if not documents:
-                print("❌ No documents could be processed")
-                return False
-            
-            # Create vector store
-            print(f"📚 Creating vector store from {len(documents)} documents...")
-            
-            # Split documents into chunks
-            texts = self.text_splitter.split_documents(documents)
-            print(f"Split into {len(texts)} chunks")
-            
-            if not texts:
-                print("❌ No text chunks created")
-                return False
-            
-            # Create vectorstore
-            self.vectorstore = Chroma.from_documents(
-                documents=texts,
-                embedding=self.embeddings,
-                persist_directory="./chroma_db"
-            )
-            
-            print(f"✅ Vector store created with {len(texts)} chunks")
-            return True
-            
-        except Exception as e:
-            print(f"❌ Document setup failed: {e}")
-            return False
+    def setup_documents(self, uploaded_files):
+        """Setup documents directly from Streamlit uploaded files"""
+        return self.document_processor.setup_documents(uploaded_files)
 
     def clear_documents(self):
         """Clear all documents from vector store"""
-        try:
-            # Clear vectorstore object
-            if hasattr(self, 'vectorstore') and self.vectorstore:
-                try:
-                    del self.vectorstore
-                except:
-                    pass
-            
-            self.vectorstore = None
-            
-            # Remove database directory
-            if os.path.exists("./chroma_db"):
-                try:
-                    shutil.rmtree("./chroma_db")
-                    print("🗑️ Removed old vectorstore")
-                except:
-                    pass
-            
-            print("✅ Documents cleared")
-        except Exception as e:
-            print(f"Error clearing documents: {e}")
+        self.document_processor.clear_vectorstore()
 
     def chat(self, user_input: str) -> str:
         """Main chat function"""
@@ -253,7 +115,7 @@ class SimpleChatbot:
             return self._handle_booking_flow(user_input)
         
         # Handle booking requests
-        booking_keywords = ['book', 'appointment', 'call me', 'contact me', 'schedule', 'meeting']
+        booking_keywords = ['book', 'appointment', 'call me','call', 'contact me', 'schedule', 'meeting']
         if any(keyword in user_lower for keyword in booking_keywords):
             self.conversational_form.current_step = "collecting"
             return "I'd be happy to help you book an appointment! 📅\n\nLet's start with your full name:"
@@ -266,7 +128,7 @@ class SimpleChatbot:
                    "• Say 'I want to book an appointment' to schedule a meeting")
         
         # Search documents if available
-        if self.vectorstore:
+        if self.document_processor.vectorstore:
             print("📄 Searching documents...")
             try:
                 return self._search_documents(user_input)
@@ -314,24 +176,24 @@ class SimpleChatbot:
     def _search_documents(self, query: str) -> str:
         """Search through documents"""
         try:
-            if not self.vectorstore:
+            if not self.document_processor.vectorstore:
                 return "📄 No documents loaded."
             
             # Try direct search
-            results = self.vectorstore.similarity_search(query, k=3)
+            results = self.document_processor.similarity_search(query, k=3)
             
             # If no results, try broader search
             if not results:
                 keywords = query.lower().split()
                 for keyword in keywords[:3]:
                     if len(keyword) > 3:
-                        results = self.vectorstore.similarity_search(keyword, k=3)
+                        results = self.document_processor.similarity_search(keyword, k=3)
                         if results:
                             break
             
             # If still no results, get any content
             if not results:
-                results = self.vectorstore.similarity_search("", k=3)
+                results = self.document_processor.similarity_search("", k=3)
             
             if results:
                 response = "📄 **Here's what I found:**\n\n"
@@ -368,13 +230,13 @@ class SimpleChatbot:
         """Format booking summary"""
         data = self.conversational_form.data
         summary = f"""📋 **Appointment Summary**
-                
-👤 **Name:** {data['name']}
-📧 **Email:** {data['email']}
-📞 **Phone:** {data['phone']}
-📅 **Date:** {data['appointment_date']}
-🕐 **Time:** {data['appointment_time']}"""
-        
+                            
+            👤 **Name:** {data['name']}
+            📧 **Email:** {data['email']}
+            📞 **Phone:** {data['phone']}
+            📅 **Date:** {data['appointment_date']}
+            🕐 **Time:** {data['appointment_time']}"""
+                    
         if data['purpose'] and data['purpose'] != "Not specified":
             summary += f"\n🎯 **Purpose:** {data['purpose']}"
         

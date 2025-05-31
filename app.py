@@ -50,20 +50,19 @@ def main():
             help="Upload PDF, TXT, or DOCX files for the chatbot to reference"
         )        
         
-        # Process uploaded files directly without temp files
+        
         if uploaded_files:
             if st.button("🔄 Process Documents"):
                 with st.spinner("Processing documents..."):
                     try:
-                        # Initialize chatbot if needed
+                        # initializing chatbot if needed
                         if not st.session_state.chatbot:
-                            st.session_state.chatbot = SimpleChatbot(api_key)
-                        
-                        # Clear old documents
+                            st.session_state.chatbot = SimpleChatbot(api_key)                        
+                       
                         st.session_state.chatbot.clear_documents()
                         
-                        # Process files directly
-                        success = st.session_state.chatbot.setup_documents_direct(uploaded_files)
+                        
+                        success = st.session_state.chatbot.setup_documents(uploaded_files)
                         
                         if success:
                             st.session_state.documents_loaded = True
@@ -79,7 +78,7 @@ def main():
                         st.error(f"Error: {e}")
                         st.session_state.documents_loaded = False
         
-        # Show status
+        # showing status
         if st.session_state.documents_loaded:
             st.success("✅ Documents ready for questions!")
         elif uploaded_files:
@@ -135,13 +134,13 @@ def main():
         with st.chat_message(message["role"]):
             st.markdown(message["content"])
     
-    # User input
-    if prompt := st.chat_input("Ask about documents or say 'book appointment'!"):
+    # Take User input
+    if prompt := st.chat_input("Ask about documents or 'call' or'book appointment'!"):
         st.session_state.messages.append({"role": "user", "content": prompt})
         with st.chat_message("user"):
             st.markdown(prompt)
         
-        # Get AI response
+        # Get response from gemini-1.5-flash google AI model
         with st.chat_message("🤖"):
             with st.spinner("Thinking..."):
                 try:
@@ -154,7 +153,7 @@ def main():
         st.session_state.messages.append({"role": "🤖", "content": response})
         st.rerun()
     
-    # Quick action buttons
+    
     col1, col2, col3 = st.columns(3)
     
     with col1:

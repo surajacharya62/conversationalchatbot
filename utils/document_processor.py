@@ -1,12 +1,12 @@
 import os
 from typing import List
 from langchain.text_splitter import RecursiveCharacterTextSplitter
-from langchain_community.document_loaders import PyPDFLoader, Docx2txtLoader, TextLoader
 from langchain_community.vectorstores import Chroma
 from langchain_google_genai import GoogleGenerativeAIEmbeddings
 from langchain.schema import Document
+import shutil
 
-
+#---- Document processing
 class DocumentProcessor:
     def __init__(self, google_api_key: str):
         self.embeddings = GoogleGenerativeAIEmbeddings(
@@ -21,120 +21,162 @@ class DocumentProcessor:
         )
         self.vectorstore = None
 
-    def load_documents(self, file_paths: List[str]) -> List[Document]:
-        """Load documents from various file types"""
-        documents = []
-        
-        for file_path in file_paths:
-            if not os.path.exists(file_path):
-                print(f"File not found: {file_path}")
-                continue 
-                
-            file_extension = os.path.splitext(file_path)[1].lower()
-            
-            try:
-                if file_extension == '.pdf':
-                    loader = PyPDFLoader(file_path)
-                elif file_extension == '.docx':
-                    loader = Docx2txtLoader(file_path)
-                elif file_extension == '.txt':
-                    loader = TextLoader(file_path, encoding='utf-8')
-                else:
-                    print(f"Unsupported file type: {file_extension}")
-                    continue
-                
-                docs = loader.load()
-                
-                # Fix: Filter out empty documents and combine all content
-                valid_content = []
-                for doc in docs:
-                    if doc.page_content and doc.page_content.strip():
-                        valid_content.append(doc.page_content.strip())
-                
-                if valid_content:
-                    # Create a single document with all content
-                    combined_content = "\n\n".join(valid_content)
-                    combined_doc = Document(
-                        page_content=combined_content,
-                        metadata={"source": file_path}
-                    )
-                    documents.append(combined_doc)
-                    print(f"Loaded document with {len(combined_content)} characters")
-                else:
-                    print(f"No content found in {file_path}")
-                
-            except Exception as e:
-                print(f"Error loading {file_path}: {e}")
-                        
-        if not documents:
-            raise ValueError("No documents could be loaded")
-            
-        return documents
-
-    def create_vectorstore(self, documents: List[Document], force_refresh: bool = False) -> Chroma:
-        """Create vector store from documents"""
-        if not documents:
-            raise ValueError("No documents provided")
-        
-        if force_refresh:
-            self._clear_vectorstore()
-        
-        # Split documents into chunks
-        texts = self.text_splitter.split_documents(documents)
-        print(f"Split into {len(texts)} chunks")        
-        
-        if not texts:
-            raise ValueError("No text chunks created")
-       
-        # Create vectorstore
-        self.vectorstore = Chroma.from_documents(
-            documents=texts,
-            embedding=self.embeddings,
-            persist_directory="./chroma_db"
-        )
-        
-        print(f"Vector store created with {len(texts)} chunks")
-        return self.vectorstore
-
-    def _clear_vectorstore(self):
-        """Clear existing vectorstore"""
+    def setup_documents(self, uploaded_files):
+        """Setup documents directly from Streamlit uploaded files - NO TEMP FILES"""
         try:
+            print(f"🔧 Processing {len(uploaded_files)} files directly...")
+            
+            # Clear old documents first
+            self.clear_vectorstore()
+            
+            documents = []
+            
+            for uploaded_file in uploaded_files:
+                try:
+                    print(f"📄 Processing: {uploaded_file.name}")
+                    
+                    # Get file content as text
+                    content = ""
+                    file_extension = os.path.splitext(uploaded_file.name)[1].lower()
+                    
+                    # handling text files
+                    if file_extension == '.txt':
+                        
+                        content = uploaded_file.getvalue().decode('utf-8')
+
+                    # handling pdf files    
+                    elif file_extension == '.pdf':
+                        
+                        try:
+                            import PyPDF2
+                            import io
+                            
+                            pdf_reader = PyPDF2.PdfReader(io.BytesIO(uploaded_file.getvalue()))
+                            text_parts = []
+                            
+                            for page in pdf_reader.pages:
+                                page_text = page.extract_text()
+                                if page_text and page_text.strip():
+                                    text_parts.append(page_text.strip())
+                            
+                            content = "\n\n".join(text_parts)
+                            
+                        except Exception as pdf_error:
+                            print(f"PDF extraction failed: {pdf_error}")
+                            content = f"Error extracting text from {uploaded_file.name}"
+                    
+                    # handling docx file
+                    elif file_extension == '.docx':
+                        
+                        try:
+                            import docx
+                            import io
+                            
+                            doc = docx.Document(io.BytesIO(uploaded_file.getvalue()))
+                            text_parts = []
+                            
+                            for paragraph in doc.paragraphs:
+                                if paragraph.text and paragraph.text.strip():
+                                    text_parts.append(paragraph.text.strip())
+                            
+                            content = "\n\n".join(text_parts)
+                            
+                        except Exception as docx_error:
+                            print(f"DOCX extraction failed: {docx_error}")
+                            content = f"Error extracting text from {uploaded_file.name}"
+                    
+                    else:
+                        print(f"Unsupported file type: {file_extension}")
+                        continue
+                    
+                    # Create document if we have content
+                    if content and content.strip() and len(content.strip()) > 10:
+                        doc = Document(
+                            page_content=content.strip(),
+                            metadata={"source": uploaded_file.name}
+                        )
+                        documents.append(doc)
+                        print(f"✅ Extracted {len(content)} characters from {uploaded_file.name}")
+                    else:
+                        print(f"⚠️ No usable content found in {uploaded_file.name}")
+                        
+                except Exception as e:
+                    print(f"❌ Error processing {uploaded_file.name}: {e}")
+                    continue
+            
+            if not documents:
+                print("❌ No documents could be processed")
+                return False
+            
+            # Create vector store
+            return self.create_vectorstore(documents) 
+            
+        except Exception as e:
+            print(f"❌ Document setup failed: {e}")
+            return False
+
+    def create_vectorstore(self, documents: List[Document]) -> bool:
+        """Create vector store from documents"""
+        try:
+            print(f"📚 Creating vector store from {len(documents)} documents...")
+            
+            # Split documents into chunks
+            texts = self.text_splitter.split_documents(documents)
+            print(f"Split into {len(texts)} chunks")
+            
+            if not texts:
+                print("❌ No text chunks created")
+                return False
+            
+            # Create vectorstore
+            self.vectorstore = Chroma.from_documents(
+                documents=texts,
+                embedding=self.embeddings,
+                persist_directory="./chroma_db"
+            )
+            
+            print(f"✅ Vector store created with {len(texts)} chunks")
+            return True
+            
+        except Exception as e:
+            print(f"❌ Vector store creation failed: {e}")
+            return False
+
+    def clear_vectorstore(self):
+        """Clear all documents from vector store"""
+        try:
+            # Clear vectorstore object
             if hasattr(self, 'vectorstore') and self.vectorstore:
-                del self.vectorstore
+                try:
+                    del self.vectorstore
+                except:
+                    pass
+            
             self.vectorstore = None
             
-            import shutil
+            # Remove database directory
             if os.path.exists("./chroma_db"):
-                shutil.rmtree("./chroma_db")
-                print("Cleared old vectorstore")
+                try:
+                    shutil.rmtree("./chroma_db")
+                    print("🗑️ Removed old vectorstore")
+                except:
+                    pass
+            
+            print("✅ Documents cleared")
         except Exception as e:
-            print(f"Error clearing vectorstore: {e}")
-
-    def load_existing_vectorstore(self) -> Chroma:
-        """Load existing vector store"""        
-        if os.path.exists("./chroma_db"):
-            try:
-                self.vectorstore = Chroma(
-                    persist_directory="./chroma_db",
-                    embedding_function=self.embeddings
-                )
-                return self.vectorstore
-            except Exception as e:
-                raise FileNotFoundError(f"Could not load existing vector store: {e}")
-        else:
-            raise FileNotFoundError("No existing vector store found")
+            print(f"Error clearing documents: {e}")
 
     def similarity_search(self, query: str, k: int = 4) -> List[Document]:
         """Search for similar documents"""
         if self.vectorstore is None:
-            raise ValueError("Vector store not initialized")
+            return []
         
         try:
             results = self.vectorstore.similarity_search(query, k=k)
             return results
         except Exception as e:
             print(f"Error in similarity search: {e}")
-            return []  
+            return []
 
     def get_vectorstore_info(self) -> dict:
         """Get information about the current vectorstore"""
