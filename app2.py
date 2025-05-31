@@ -75,108 +75,60 @@ def main():
             st.session_state.last_uploaded_files = current_file_signature
             st.session_state.documents_loaded = False
             st.session_state.vectorstore_ready = False
+
+            # st.session_state.uploaded_file_names = [f.name for f in uploaded_files]
+            # st.session_state.current_file_name = uploaded_files[0].name
             
             with st.spinner("🔄 Processing documents (refreshing database)..."):
-                # Initialize chatbot first if not exists
+                # initializing chatbot first if not exists
                 if not st.session_state.chatbot:
                     st.session_state.chatbot = SimpleChatbot(api_key)
                 else:
+                    
                     st.session_state.chatbot.clear_documents()
                 
-                # Enhanced file processing with detailed logging
+                # saving uploaded files temporarily and process them
                 file_paths = []
                 try:
-                    st.info("📁 Creating temporary files...")
-                    
-                    for i, uploaded_file in enumerate(uploaded_files):
-                        st.info(f"Processing file {i+1}/{len(uploaded_files)}: {uploaded_file.name}")
-                        
-                        # Check file properties
-                        file_size = uploaded_file.size if hasattr(uploaded_file, 'size') else len(uploaded_file.getvalue())
-                        st.info(f"File size: {file_size} bytes, Type: {uploaded_file.type}")
-                        
-                        if file_size == 0:
-                            st.error(f"❌ File {uploaded_file.name} is empty!")
-                            continue
-                    
-                        # Create temp file
-                        file_extension = os.path.splitext(uploaded_file.name)[1]
-                        with tempfile.NamedTemporaryFile(delete=False, suffix=file_extension) as tmp_file:
-                            file_content = uploaded_file.getvalue()
-                            tmp_file.write(file_content)
+                    for uploaded_file in uploaded_files:
+                        print("uploaded-file====",uploaded_file)
+                        with tempfile.NamedTemporaryFile(delete=False, suffix=os.path.splitext(uploaded_file.name)[1]) as tmp_file:
+                            tmp_file.write(uploaded_file.getvalue())
                             file_paths.append(tmp_file.name)
                             
-                            st.success(f"✅ Created temp file: {tmp_file.name}")
-                            
-                            # Verify temp file was created properly
-                            if os.path.exists(tmp_file.name):
-                                actual_size = os.path.getsize(tmp_file.name)
-                                st.info(f"Temp file size on disk: {actual_size} bytes")
-                                
-                                if actual_size != file_size:
-                                    st.warning(f"⚠️ Size mismatch! Expected: {file_size}, Got: {actual_size}")
-                            else:
-                                st.error(f"❌ Temp file was not created: {tmp_file.name}")
-                        
-                        if not file_paths:
-                            st.error("❌ No valid files to process!")
-                            return
-                        
-                        st.info(f"📁 Processing {len(file_paths)} temporary files...")
-                        for path in file_paths:
-                            st.text(f"📄 {path}")
+                    print("file_paths----+++", file_paths)
+                    # showing file info
+                    st.info(f"📁 Processing files: {[f.name for f in uploaded_files]}")                    
                     
-                    # Process documents with the enhanced error handling
-                    try:
-                        st.session_state.chatbot.setup_documents(file_paths, force_refresh=True)
-                        
-                        # Verify documents are loaded
-                        if st.session_state.chatbot.document_processor.vectorstore:
-                            st.session_state.documents_loaded = True
-                            st.session_state.vectorstore_ready = True
-                            st.success(f"✅ Successfully processed {len(uploaded_files)} documents!")
-                            st.success("🔄 Database refreshed with new content!")
-                            
-                            # Show vectorstore info
-                            info = st.session_state.chatbot.document_processor.get_vectorstore_info()
-                            st.json(info)
-                            
-                        else:
-                            st.error("❌ Document processing failed - vectorstore is None!")
-                            st.session_state.documents_loaded = False
-                            st.session_state.vectorstore_ready = False
-                        
-                    except Exception as processing_error:
-                        st.error(f"❌ Document processing error: {type(processing_error).__name__}: {processing_error}")
-                        import traceback
-                        st.text(f"Full traceback:\n{traceback.format_exc()}")
+                    st.session_state.chatbot.setup_documents(file_paths, force_refresh=True)
+                    
+                    # verifing documents are loaded
+                    if st.session_state.chatbot.document_processor.vectorstore:
+                        st.session_state.documents_loaded = True
+                        st.session_state.vectorstore_ready = True
+                        st.success(f"✅ Processed {len(uploaded_files)} documents!")
+                        st.success("🔄 Database refreshed with new content!")
+                    else:
+                        st.error("❌ Document processing failed!")
                         st.session_state.documents_loaded = False
                         st.session_state.vectorstore_ready = False
                     
-                    # Show file information
+                    # showing which files were processed
                     for file in uploaded_files:                        
-                        st.text(f"📁 {file.name} ({file.type}) - {file.size if hasattr(file, 'size') else 'unknown'} bytes")
+                        st.text(f"📁 {file.name} ({file.type}) - {file.size} bytes")
                         
                 except Exception as e:
-                    st.error(f"❌ Error in file processing: {type(e).__name__}: {e}")
-                    import traceback
-                    st.text(f"Full traceback:\n{traceback.format_exc()}")
+                    st.error(f"Error processing documents: {e}")
                     st.session_state.documents_loaded = False
                     st.session_state.vectorstore_ready = False
 
                 finally:
-                    # Clean up temporary files
-                    cleaned_count = 0
+                    # cleaning up temporary files
                     for file_path in file_paths:
                         try:
-                            if os.path.exists(file_path):
-                                os.unlink(file_path)
-                                cleaned_count += 1
-                        except Exception as cleanup_error:
-                            st.warning(f"⚠️ Could not clean up {file_path}: {cleanup_error}")
-                    
-                    if cleaned_count > 0:
-                        st.info(f"🧹 Cleaned up {cleaned_count} temporary files")
+                            os.unlink(file_path)
+                        except:
+                            pass
         
         elif uploaded_files and not files_changed:
             st.info(f"📄 {len(uploaded_files)} documents already loaded")
